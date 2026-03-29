@@ -1,4 +1,4 @@
-# Hannh - Virtual Chatbot Assistant
+# Hannh - Virtual Chatbot Girlfriend
 
 ## 📖 Description
 Hannh is an English conversational chatbot designed as a **virtual girlfriend-style assistant**.  
