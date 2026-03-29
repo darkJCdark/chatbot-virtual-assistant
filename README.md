@@ -17,25 +17,5 @@ This project is part of the course **1INF59 - Natural Language Processing (PUCP,
 
 ---
 
-## 📂 Repository Structure
-chatbot-virtual-assistant/
-│
-├── data/                  # Corpora and datasets used for training
-├── src/                   # Main source code
-│   ├── preprocessing/      # Data cleaning and preparation
-│   ├── corpus/             # Corpus management
-│   ├── models/             # NLP models
-│   ├── chatbot/            # Hannh chatbot logic
-│   └── utils/              # Auxiliary functions
-│
-├── tests/                 # Unit tests
-├── docs/                  # Project documentation
-│
-├── requirements.txt       # Required libraries
-├── README.md              # General project description
-└── .gitignore             # Files to be excluded from version control
-
----
-
 ## 👥 Team
 Project developed by **Group 5** of the course 1INF59 - Natural Language Processing.
