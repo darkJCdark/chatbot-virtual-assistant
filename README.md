@@ -1,7 +1,7 @@
 # Hannah - Virtual Chatbot Girlfriend
 
 ## 📖 Description
-Hannh is an English conversational chatbot designed as a **virtual girlfriend-style assistant**.  
+Hannah is an English conversational chatbot designed as a **virtual girlfriend-style assistant**.  
 The goal of the project is to apply **Natural Language Processing (NLP)** techniques to build a system capable of maintaining natural and fluid conversations, simulating interaction with a real person.
 
 This project is part of the course **1INF59 - Natural Language Processing (PUCP, 2026-1)**.
