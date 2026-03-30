@@ -1,0 +1,8 @@
+# Ignorar los cerebros de la IA
+*.pth
+checkpoints/
+
+# Ignorar entornos virtuales y cachés
+.venv/
+__pycache__/
+.cache/
