@@ -1,52 +1,76 @@
-import os
 import torch
-import tiktoken
 from torch.nn import functional as F
-# Importamos la arquitectura desde tu archivo de entrenamiento
-# (Asegúrate de que la clase MiniGPT y Block sean iguales)
-from src.models.training import MiniGPT, n_embd, n_layer, n_head, block_size, device
+import tiktoken # <-- AGREGADO: Importamos tiktoken
 
-def generate_response(model, enc, prompt, max_new_tokens=150, temperature=0.8):
-    model.eval()
-    # Convertimos tu pregunta a números
-    idx = torch.tensor(enc.encode(prompt), dtype=torch.long, device=device).unsqueeze(0)
-    
-    print("\n--- La IA está pensando... ---\n")
-    
-    with torch.no_grad():
-        for _ in range(max_new_tokens):
-            # Recortamos el contexto si es muy largo
-            idx_cond = idx[:, -block_size:]
-            logits, _ = model(idx_cond)
-            # Aplicamos "Temperature" para que no sea tan repetitiva
-            logits = logits[:, -1, :] / temperature
-            probs = F.softmax(logits, dim=-1)
-            idx_next = torch.multinomial(probs, num_samples=1)
-            idx = torch.cat((idx, idx_next), dim=1)
+# Asegúrate de tener tu modelo cargado, la variable 'device' definida, 
+# y el modelo en modo evaluación antes de ejecutar el bucle
+# model.eval() # <-- ¡MUY IMPORTANTE PARA QUE NO FALLE!
+
+@torch.no_grad()
+def generate_text(model, idx, max_new_tokens, temperature=0.8, top_k=40, block_size=256):
+    """
+    Genera texto nuevo usando Temperature y Top-K para evitar repeticiones.
+    """
+    for _ in range(max_new_tokens):
+        # Recortamos el contexto si excede el tamaño máximo del bloque
+        idx_cond = idx if idx.size(1) <= block_size else idx[:, -block_size:]
+        
+        # Obtenemos las predicciones (logits)
+        logits, _ = model(idx_cond)
+        
+        # Nos enfocamos solo en el último paso de tiempo (la siguiente palabra)
+        logits = logits[:, -1, :] 
+        
+        # 1. TEMPERATURE: Suavizamos o afilamos las probabilidades
+        logits = logits / temperature
+        
+        # 2. TOP-K: Nos quedamos solo con las 'k' mejores opciones, ignorando el resto
+        if top_k is not None:
+            v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+            logits[logits < v[:, [-1]]] = -float('Inf')
             
-            # Si genera el token de fin de texto (opcional) o queremos parar:
-            if idx_next.item() == 50256: # Token <|endoftext|> de GPT2
-                break
+        # Convertimos a probabilidades usando softmax
+        probs = F.softmax(logits, dim=-1)
+        
+        # 3. MUESTREO: Elegimos la siguiente palabra basándonos en las probabilidades
+        idx_next = torch.multinomial(probs, num_samples=1)
+        
+        # Añadimos la nueva palabra a la secuencia
+        idx = torch.cat((idx, idx_next), dim=1)
 
-    return enc.decode(idx[0].tolist())
+    return idx
 
-# --- INICIO DEL PROGRAMA ---
-checkpoint_path = "src/models/checkpoints/model_best.pth"
+# ==========================================
+# BUCLE DE CHAT CORREGIDO
+# ==========================================
 
-if not os.path.exists(checkpoint_path):
-    print(f"❌ Error: No encontré el archivo {checkpoint_path}")
-else:
-    # 1. Cargar cerebro
-    enc = tiktoken.get_encoding("gpt2")
-    model = MiniGPT().to(device)
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    print("✅ Modelo cargado con éxito. ¡Ya puedes hablar con tu IA!")
+# <-- AGREGADO: Inicializamos el tokenizador (el mismo que usamos en el entrenamiento)
+enc = tiktoken.get_encoding("gpt2")
 
-    # 2. Bucle de Chat
-    while True:
+print("\n✅ Modelo cargado con éxito. (Escribe 'salir' para terminar)")
+
+while True:
+    try:
         user_input = input("\n👤 Tú: ")
-        if user_input.lower() in ['salir', 'exit', 'quit']: break
-        prompt_estructurado = f"User: {user_input}\nAssistant:"
-        response = generate_response(model, enc, prompt_estructurado)
-        print(f"🤖 IA: {response}")
+        if user_input.lower() in ['salir', 'exit', 'quit']:
+            break
+            
+        # Pásale el texto crudo tal cual, sin "User:" ni "Assistant:"
+        input_ids = enc.encode(user_input)
+        
+        # Asumo que la variable 'device' ya está definida más arriba en tu script original
+        # (ej. device = 'cuda' if torch.cuda.is_available() else 'cpu')
+        input_tensor = torch.tensor([input_ids], dtype=torch.long).to(device)
+        
+        print("\n--- La IA está pensando... ---")
+        
+        # Generamos unos 100 tokens nuevos
+        output_tensor = generate_text(model, input_tensor, max_new_tokens=100, temperature=0.8, top_k=40)
+        
+        # Decodificamos de vuelta a texto
+        respuesta_texto = enc.decode(output_tensor[0].tolist())
+        
+        print(f"\n🤖 IA: {respuesta_texto}")
+        
+    except KeyboardInterrupt:
+        print("\n⏹️ Generación detenida por el usuario.")
