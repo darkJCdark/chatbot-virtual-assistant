@@ -21,7 +21,6 @@ checkpoints_dir = os.path.join(current_dir, "checkpoints")
 os.makedirs(checkpoints_dir, exist_ok=True)
 best_checkpoint_path = os.path.join(checkpoints_dir, "model_best.pth")
 
-# Hiperparámetros que el Chat también necesitará leer
 batch_size = 64       
 block_size = 256      
 max_iters = 100000     
@@ -37,7 +36,7 @@ n_head = 6
 dropout = 0.2         
 
 # ==========================================
-# 1. LA ARQUITECTURA (Importable por otros scripts)
+# 1. LA ARQUITECTURA (Definición interna)
 # ==========================================
 class Block(nn.Module):
     def __init__(self):
@@ -54,14 +53,14 @@ class Block(nn.Module):
 
     def forward(self, x):
         T = x.size(1) 
-        mask = torch.nn.Transformer.generate_square_subsequent_mask(T).to(device)
+        mask = torch.nn.Transformer.generate_square_subsequent_mask(T).to(x.device)
         attn_output, _ = self.attn(self.ln1(x), self.ln1(x), self.ln1(x), is_causal=True, attn_mask=mask)
         x = x + attn_output
         x = x + self.ffwd(self.ln2(x))
         return x
 
 class MiniGPT(nn.Module):
-    def __init__(self, vocab_size=50257): # Valor por defecto de GPT2
+    def __init__(self, vocab_size=50257): 
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
@@ -90,53 +89,29 @@ class MiniGPT(nn.Module):
         return logits, loss
 
 # ==========================================
-# 2. LÓGICA DE EJECUCIÓN (Solo corre si ejecutas este archivo)
+# 2. LÓGICA DE EJECUCIÓN
 # ==========================================
 if __name__ == "__main__":
-    from datasets import interleave_datasets # Importamos la herramienta mágica
+    from datasets import interleave_datasets
     
     print(f"--- Arrancando Motor Serie en: {device.upper()} ---")
-
-    # ==========================================
-    # PIPELINE DE DATOS: LA DIETA BALANCEADA
-    # ==========================================
     print("📚 Cargando ingredientes para la dieta balanceada...")
     
-    # 1. WikiText (El erudito - 50%) - AHORA EN STREAMING
     wiki_dataset = load_dataset("Salesforce/wikitext", "wikitext-103-raw-v1", streaming=True)
-    
-    # 2. TinyStories (El lógico - 30%) - AHORA EN STREAMING
     tiny_dataset = load_dataset("roneneldan/TinyStories", streaming=True)
-    
-    # 3. OpenWebText (El conversador casual - 20%) - EN STREAMING
     web_dataset = load_dataset("Skylion007/openwebtext", streaming=True) 
 
     print("🌪️ Mezclando datasets (Interleaving)...")
-    
-    # Mezclamos los datasets de entrenamiento con sus respectivos pesos
-    train_dataset = interleave_datasets(
-        [wiki_dataset['train'], tiny_dataset['train'], web_dataset['train']],
-        probabilities=[0.5, 0.3, 0.2],
-        seed=42
-    )
-    
-    # Hacemos lo mismo para la validación (TinyStories y WebText pueden no tener 'validation', 
-    # así que usamos el 'train' de TinyStories para validar la lógica y solo validamos WikiText)
-    val_dataset = interleave_datasets(
-        [wiki_dataset['validation'], tiny_dataset['train']], 
-        probabilities=[0.7, 0.3],
-        seed=42
-    )
+    train_dataset = interleave_datasets([wiki_dataset['train'], tiny_dataset['train'], web_dataset['train']], probabilities=[0.5, 0.3, 0.2], seed=42)
+    val_dataset = interleave_datasets([wiki_dataset['validation'], tiny_dataset['train']], probabilities=[0.7, 0.3], seed=42)
 
     enc = tiktoken.get_encoding("gpt2")
     vocab_size = enc.n_vocab
 
     def encode_data(example):
-        # Protegemos contra campos vacíos en diferentes datasets
         texto = example.get('text') or example.get('content') or ""
         return {'ids': enc.encode(texto)}
 
-    # Como OpenWebText está en streaming, tomamos una muestra grande pero manejable para tokenizar
     print("Tokenizando la mezcla (Esto tomará un momento)...")
     train_data = list(train_dataset.take(200000).map(encode_data, remove_columns=['text', 'meta']))
     val_data = list(val_dataset.take(10000).map(encode_data, remove_columns=['text']))
@@ -166,12 +141,10 @@ if __name__ == "__main__":
         model.train()
         return out
 
-    # Inicialización
     model = MiniGPT(vocab_size).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-2)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iters, eta_min=min_lr)
 
-    # Restauración
     best_val_loss = float('inf')
     start_iter = 0
 
@@ -194,7 +167,6 @@ if __name__ == "__main__":
     scaler = torch.amp.GradScaler('cuda', enabled=(device == 'cuda'))
     t0 = time.time()
 
-    # BUCLE DE ENTRENAMIENTO
     for iter in range(start_iter, max_iters):
         if iter % eval_interval == 0 or iter == max_iters - 1:
             losses = estimate_loss(model)
@@ -209,7 +181,6 @@ if __name__ == "__main__":
                 'best_val_loss': min(losses['val'], best_val_loss)
             }
             
-            # Guardado y Limpieza
             step_filename = os.path.join(checkpoints_dir, f"model_{iter:05d}.pth")
             torch.save(checkpoint_data, step_filename)
             todos = sorted(glob.glob(os.path.join(checkpoints_dir, "model_[0-9]*.pth")))
